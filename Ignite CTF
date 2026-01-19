@@ -1,6 +1,0 @@
------- Ignite CTF ------
-
-Let's start scanning for open ports, I'll be using RustScan because is really quick, but you can use Nmap if you want to:
-
-./rustscan -a 10.67.162.140 --ulimit=5000
-

